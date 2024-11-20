@@ -8,7 +8,7 @@ import hyper_parameters as parameters
 GEN_PATH = 'saved_models/sample_generator_net.pt'
 RESULT_PATH = 'data/generated_result.csv'
 
-num_samples = 10000  # The number of generated samples.
+num_samples = 1000  # The number of generated samples.
 
 # Load the trained generator model
 generator = cardiGAN.Generator()
@@ -34,12 +34,11 @@ calc_result = calculator.calculate_all_parameters(normalized_compositions).detac
 normalized_compositions = normalized_compositions.detach().numpy()
 
 # Write the element compositions and empirical parameters of the generated candidates.
+delim="-"
 for i in range(normalized_compositions.shape[0]):
-    element_strings = ''
-    mol_ratio_strings = ''
-    for m in range(parameters.num_elements):
-        if normalized_compositions[i][m] > 0.01:
-            element_strings += (parameters.element_list[m] + '-')
-            mol_ratio_strings += ("{0:.2f}".format(normalized_compositions[i][m]) + '-')
+    elements = [parameters.element_list[m] for m in range(parameters.num_elements) if normalized_compositions[i][m] > 0.01]
+    mol_ratios = ["{0:.2f}".format(normalized_compositions[i][m]) for m in range(parameters.num_elements) if normalized_compositions[i][m] > 0.01]
+    element_strings = delim.join([str(ele) for ele in elements])
+    mol_ratio_strings = delim.join([str(ele) for ele in mol_ratios])
     csv_write.writerow([element_strings, mol_ratio_strings] + list(calc_result[i]))
 print("finish generation of " + str(num_samples) + " novel CCA samples.")

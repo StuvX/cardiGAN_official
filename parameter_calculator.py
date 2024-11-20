@@ -221,7 +221,7 @@ def calculate_price(fake_alloy):
     :return: The estimated element cost of the given alloy.
     """
     mass = torch.matmul(fake_alloy, torch.Tensor(parameters.mass_list))
-    price = torch.matmul(fake_alloy, torch.Tensor(parameters.mass_list) * torch.Tensor(parameters.price_list))
+    price = torch.matmul(fake_alloy,torch.Tensor(parameters.mass_list) * torch.Tensor(parameters.price_list))
     return price / (mass + 1e-6)
 
 
