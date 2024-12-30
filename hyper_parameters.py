@@ -9,6 +9,8 @@ empirical_params = ['Enthalpy(kJ/mol)', 'std_enthalpy(kJ/mol)', 'a', 'Delta(%)',
 GAN_param_selection = [0, 7, 3, 6, 1, 2, 11, 5, 9, 10, 8]
 ANN_param_selection = [0, 7, 3, 6, 1, 2, 11, 5, 9, 4, 10, 8]
 
+sorted_empirical_params = [empirical_params[i] for i in ANN_param_selection]
+
 # Setting the batch size and clip range.
 size_batch = 3
 clip_range = 0.015

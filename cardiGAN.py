@@ -126,7 +126,7 @@ discriminator = Discriminator()
 # Load the trained phase classifier model.
 classifier_path = 'saved_models/classifier_net.pt'
 classifier = Classifier()
-classifier.load_state_dict(torch.load(classifier_path))
+classifier.load_state_dict(torch.load(classifier_path, weights_only=True))
 classifier.eval()
 
 # As recommended in 'Wasserstein GAN' (https://arxiv.org/abs/1701.07875), both networks apply RMSprop optimization.
@@ -202,31 +202,31 @@ def train_discriminator(real_input):
     return d_loss.item()
 
 
-if __name__ == "__main__":
-    # ————————————————————————————————— Load the training set ————————————————————————————————————————
+# if __name__ == "__main__":
+#     # ————————————————————————————————— Load the training set ————————————————————————————————————————
 
-    training_set = TrainingSet()
-    loader = DataLoader(dataset=training_set, batch_size=parameters.size_batch, shuffle=True, )
+#     training_set = TrainingSet()
+#     loader = DataLoader(dataset=training_set, batch_size=parameters.size_batch, shuffle=True, )
 
-    # ————————————————————————————————— Start GAN training ————————————————————————————————————————————
+#     # ————————————————————————————————— Start GAN training ————————————————————————————————————————————
 
-    for epoch in range(parameters.num_epoch):
-        sum_d_loss = 0  # The sum of discriminator losses of the current epoch.
+#     for epoch in range(parameters.num_epoch):
+#         sum_d_loss = 0  # The sum of discriminator losses of the current epoch.
 
-        for i, real_cca in enumerate(loader):
-            # train the generator network.
-            train_generator(real_cca)
-            # set up clip value for discriminator
-            for p in discriminator.parameters():
-                p.data.clamp_(-parameters.clip_range, parameters.clip_range)
+#         for i, real_cca in enumerate(loader):
+#             # train the generator network.
+#             train_generator(real_cca)
+#             # set up clip value for discriminator
+#             for p in discriminator.parameters():
+#                 p.data.clamp_(-parameters.clip_range, parameters.clip_range)
 
-            for j in range(5):
-                # train the discriminator and accumulate real input and fake input's loss
-                sum_d_loss += -train_discriminator(real_cca)
+#             for j in range(5):
+#                 # train the discriminator and accumulate real input and fake input's loss
+#                 sum_d_loss += -train_discriminator(real_cca)
 
-        print('Epoch:', epoch, "discriminator loss:", sum_d_loss)
-        # Save the model for every 100 epochs.
-        if epoch % 100 == 99:
-            torch.save(generator.state_dict(), GEN_PATH)
+#         print('Epoch:', epoch, "discriminator loss:", sum_d_loss)
+#         # Save the model for every 100 epochs.
+#         if epoch % 100 == 99:
+#             torch.save(generator.state_dict(), GEN_PATH)
 
-    torch.save(generator.state_dict(), GEN_PATH)
+#     torch.save(generator.state_dict(), GEN_PATH)

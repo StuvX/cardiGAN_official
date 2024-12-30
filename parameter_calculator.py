@@ -1,22 +1,30 @@
 import numpy as np
 import torch
-import cardiGAN
+# import cardiGAN
 import hyper_parameters as parameters
 import matminer.utils.data as mm_data
 from pymatgen.core.periodic_table import Element
 
-print('start loading parameter calculator...')
+# print('start loading parameter calculator...')
 # Load the trained phase classifier model.
-classifier_path = 'saved_models/classifier_net.pt'
-classifier = cardiGAN.Classifier()
-classifier.load_state_dict(torch.load(classifier_path))
-classifier.eval()
+# TODO: check if we want to use the parameter estimator...
+# classifier_path = 'saved_models/classifier_net.pt'
+# classifier = cardiGAN.Classifier()
+# classifier.load_state_dict(torch.load(classifier_path, weights_only=True))
+# classifier.eval()
 # Load the parameters of the existing CCAs and calculate the mean and std.
 data_set = np.loadtxt('data/train_parameter.csv', delimiter=',')
 feature = data_set[:, parameters.ANN_param_selection]
 feature_mean = torch.from_numpy(np.mean(feature, axis=0)).float()
 feature_std = torch.from_numpy(np.std(feature, axis=0)).float()
+feature_max = torch.from_numpy(np.max(np.abs(feature), axis=0)).float()
 
+mixing_enthalpy = mm_data.MixingEnthalpy(impute_nan=True)
+
+mean_param_dict = dict(zip(parameters.sorted_empirical_params, feature_mean))
+# print(mean_param_dict)
+std_param_dict = dict(zip(parameters.sorted_empirical_params, feature_std))
+max_param_dict = dict(zip(parameters.sorted_empirical_params, feature_max))
 
 def calculate_Tm(fake_alloy):
     """
@@ -89,9 +97,10 @@ def calculate_delta(fake_alloy):
     """
     radii_list = torch.tensor(parameters.radii_list, requires_grad=True).view(parameters.num_elements, -1)
     average_radius = torch.matmul(fake_alloy, radii_list)
-    radii = torch.ones((fake_alloy.shape[0], parameters.num_elements))
-    for k in range(fake_alloy.shape[0]):
-        radii[k] = radii_list.view(parameters.num_elements)
+    # radii = torch.ones((fake_alloy.shape[0], parameters.num_elements))
+    # for k in range(fake_alloy.shape[0]):
+    #     radii[k] = radii_list.view(parameters.num_elements)
+    radii = radii_list.view(parameters.num_elements)
     parenthesis = 1 - radii / (average_radius + 1e-6)
     parenthesis = parenthesis * parenthesis
     parenthesis = torch.matmul(fake_alloy, torch.transpose(parenthesis, 0, 1))
@@ -119,15 +128,15 @@ def calculate_ohm():
     for i in range(parameters.num_elements):
         for j in range(parameters.num_elements):
             if i != j:
-                ohm_matrix[i][j] = mm_data.MixingEnthalpy().get_mixing_enthalpy(Element(parameters.element_list[i]),
-                                                                                Element(parameters.element_list[j]))
+                ohm_matrix[i][j] = mixing_enthalpy.get_mixing_enthalpy(Element(parameters.element_list[i]),
+                                                                            Element(parameters.element_list[j]))
     return 4 * ohm_matrix
 
 
 ohm = calculate_ohm()
 
 
-def calculate_enthalpy(fake_alloy, ohm_matrix):
+def calculate_enthalpy(fake_alloy, ohm_matrix=ohm):
     """
     This function calculates the enthalpy of mixing of the given alloy.
     :param fake_alloy: The element composition of the given alloy.
@@ -143,11 +152,11 @@ def calculate_enthalpy(fake_alloy, ohm_matrix):
     return enthalpy
 
 
-def calculate_std_enthalpy(fake_alloy, H, ohm_matrix):
+def calculate_std_enthalpy(fake_alloy, H, ohm_matrix=ohm):
     """
     This function calculates the standard deviation of enthalpy of the given alloy.
-    :param H: The enthalpy of mixing of the given alloy.
     :param fake_alloy: The element composition of the given alloy.
+    :param H: The enthalpy of mixing of the given alloy.
     :param ohm_matrix: A matrix containing the binary enthalpy of mixing between the 56 selected elements.
     :return: The standard deviation of enthalpy of the given alloy.
     """
@@ -257,6 +266,38 @@ def calculate_parameters(fake_alloy):
         dim=1)
     return params
 
+def calculate_parameters_dict(fake_alloy)->dict:
+    """
+    This function applies the above functions and calculates the 11 empirical parameters for GAN training.
+    :param fake_alloy: The element composition of the given alloy.
+    :return: The 11 empirical parameters of the alloy.
+    """
+    enthalpy = calculate_enthalpy(fake_alloy, ohm).view(fake_alloy.shape[0], -1)
+    std_enthalpy = calculate_std_enthalpy(fake_alloy, enthalpy, ohm).view(fake_alloy.shape[0], -1)
+    a = calculate_a(fake_alloy).view(fake_alloy.shape[0], -1)
+    delta = calculate_delta(fake_alloy).view(fake_alloy.shape[0], -1)
+    entropy = calculate_entropy(fake_alloy).view(fake_alloy.shape[0], -1)
+    Tm = calculate_Tm(fake_alloy).view(fake_alloy.shape[0], -1)
+    std_Tm = calculate_std_Tm(fake_alloy).view(fake_alloy.shape[0], -1)
+    x = calculate_x(fake_alloy).view(fake_alloy.shape[0], -1)
+    std_x = calculate_std_x(fake_alloy).view(fake_alloy.shape[0], -1)
+    vec = calculate_VEC(fake_alloy).view(fake_alloy.shape[0], -1)
+    std_vec = calculate_std_VEC(fake_alloy).view(fake_alloy.shape[0], -1)
+
+    params = {'enthalpy': enthalpy,
+              'std_enthalpy': std_enthalpy,
+              'std_Tm': std_Tm, 
+              'delta': delta, 
+              'Tm': Tm, 
+              'a': a,
+              'std_vec': std_vec,
+              'entropy': entropy,
+              'std_x': std_x,
+              'vec': vec,
+              'x': x}
+
+    return params
+
 
 def calculate_phase_parameters(fake_alloy):
     """
@@ -314,4 +355,4 @@ def calculate_all_parameters(fake_alloy):
     return params
 
 
-print('finish loading parameter calculator.')
+# print('finish loading parameter calculator.')
