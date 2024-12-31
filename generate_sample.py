@@ -7,6 +7,7 @@ import hyper_parameters as parameters
 from torch.utils.data import DataLoader, Dataset
 
 from denoising_diffusion_pytorch import GaussianDiffusion1D, Trainer1D, Dataset1D, Unet1D
+from cardi_diffusion import PI_GaussianDiffusion1D
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -16,7 +17,7 @@ model = Unet1D(
     channels = 1
 )
 
-diffusion = GaussianDiffusion1D(
+diffusion = PI_GaussianDiffusion1D(
     model,
     seq_length = 56,
     timesteps = 1000,
@@ -27,7 +28,7 @@ data = torch.load(str('results/model-1.pt'), map_location=device, weights_only=T
 
 diffusion.load_state_dict(data['model'])
 
-novel_alloy = diffusion.sample(batch_size=1)
+novel_alloy = torch.sigmoid(diffusion.sample(batch_size=1))
 
 labelled_alloy = list(zip(parameters.element_list, np.around(novel_alloy.squeeze().tolist(),3).tolist()))
 

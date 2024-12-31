@@ -11,7 +11,7 @@ from random import random
 
 from denoising_diffusion_pytorch import GaussianDiffusion1D, Trainer1D, Dataset1D, Unet1D
 
-# from DiT import DiT
+eps = 1e-8
 
 # The path to save the trained generator model.
 GEN_PATH = 'saved_models/generator_net.pt'
@@ -104,28 +104,6 @@ def q_sample(x0, t, alphas_bar_sqrt):
     alphas_t = alphas_bar_sqrt[t].view(-1, 1)  # Ensure alphas_t has shape [batch_size, 1]
     return alphas_t * x0 + (1 - alphas_t) * noise
 
-# Precompute alphas_bar_sqrt values
-import numpy as np
-
-# betas = np.linspace(0.0001, 0.02, 20)
-# alphas = 1. - betas
-# alphas_bar = np.cumprod(alphas)
-# alphas_bar_sqrt = torch.tensor(np.sqrt(alphas_bar), dtype=torch.float32)
-
-def loss_function(model, x0, t, alphas_bar_sqrt):
-
-    predicted_x0 = model(x0.float(), t, alphas_bar_sqrt)
-    
-    # Mean squared error loss
-    mse_loss = F.mse_loss(predicted_x0, x0.float())
-    
-    # Add conditional logic if needed
-    # For example, impose a constraint that the sum of weights should be 1
-    condition_penalty = torch.abs(torch.sum(x0, dim=1) - 1)
-    total_loss = mse_loss + torch.mean(condition_penalty)
-    
-    return total_loss.float()
-
 #Subclass the gaussian diffusion class to incorporate the PI loss function
 class PI_GaussianDiffusion1D(GaussianDiffusion1D):
     '''
@@ -150,8 +128,8 @@ class PI_GaussianDiffusion1D(GaussianDiffusion1D):
                 x_self_cond.detach_()
 
         # predict and take gradient step
-
-        model_out = self.model(x, t, x_self_cond)
+            # add sigmoid to output of model to enforce output between 0 and 1
+        model_out = torch.sigmoid(self.model(x, t, x_self_cond))
 
         if self.objective == 'pred_noise':
             target = noise
@@ -177,17 +155,21 @@ class PI_GaussianDiffusion1D(GaussianDiffusion1D):
         threshold = 0.4
         penalty = torch.relu(model_out - threshold)
 
-        # novel_alloy_norm = model_out
+        # target lower values for the mean and s.d. of enthalpy of mixing - perhaps this should instead minimize the difference between the input alloy      
+        enthalpy = calculator.calculate_enthalpy(model_out).view(model_out.shape[0], -1)
+        std_enthalpy = calculator.calculate_std_enthalpy(model_out, enthalpy).view(model_out.shape[0], -1)
+        delta = calculator.calculate_delta(model_out).view(model_out.shape[0], -1)
+        # entropy = calculator.calculate_entropy(model_out).view(model_out.shape[0], -1)
 
-        # target lower values for the mean and s.d. of enthalpy of mixing - perhaps this should instead minimize the difference between the input alloy
-        
-        # enthalpy = torch.abs((calculator.calculate_enthalpy(model_out).view(model_out.shape[0], -1) - calculator.mean_param_dict['Enthalpy(kJ/mol)']) / calculator.std_param_dict['Enthalpy(kJ/mol)']) / calculator.max_param_dict['Enthalpy(kJ/mol)']
-        # std_enthalpy = torch.abs((calculator.calculate_std_enthalpy(model_out, enthalpy).view(model_out.shape[0], -1) - calculator.mean_param_dict['std_enthalpy(kJ/mol)']) / calculator.std_param_dict['std_enthalpy(kJ/mol)']) / calculator.max_param_dict['std_enthalpy(kJ/mol)']
-        # delta = torch.abs((calculator.calculate_delta(model_out).view(model_out.shape[0], -1) - calculator.mean_param_dict['Delta(%)']) / calculator.std_param_dict['Delta(%)']) / calculator.max_param_dict['Delta(%)']
-        # entropy = (calculator.calculate_entropy(model_out).view(model_out.shape[0], -1) - calculator.mean_param_dict['Entropy(J/K*mol)']) / calculator.std_param_dict['Entropy(J/K*mol)']
+        enthalpy_norm = enthalpy / calculator.max_param_dict['Enthalpy(kJ/mol)']
+        std_enthalpy_norm = std_enthalpy / calculator.max_param_dict['std_enthalpy(kJ/mol)']
+        delta_norm = delta / calculator.max_param_dict['Delta(%)']
+        # entropy_norm = entropy / calculator.max_param_dict['Entropy(J/K*mol)']
+
+        param_loss = torch.log(torch.abs((enthalpy_norm.mean() + std_enthalpy_norm.mean() + delta_norm.mean())) + eps)
 
         # return the loss as the mean across the batch
-        return loss.mean()# + 0.00001*(condition_penalty.mean() + penalty.mean() + enthalpy.mean() + std_enthalpy.mean() + delta.mean()) / entropy.mean()
+        return loss.mean() + 0.001* param_loss + penalty.mean() + condition_penalty.mean()
 
 # ————————————————————————————————— Set up the neural networks ————————————————————————————————————
 
@@ -200,7 +182,7 @@ model = Unet1D(
 diffusion = PI_GaussianDiffusion1D(
     model,
     seq_length = 56,
-    timesteps = 100,
+    timesteps = 1000,
     objective = 'pred_v'
 )
 
@@ -223,8 +205,8 @@ if __name__ == "__main__":
 
     trainer.train()
 
-    sampled_seq = diffusion.sample(batch_size = 4)
-    print(sampled_seq.shape) # (4, 32, 128)
+    # sampled_seq = diffusion.sample(batch_size = 4)
+    # print(sampled_seq.shape) # (4, 32, 128)
     # ————————————————————————————————— Start GAN training ————————————————————————————————————————————
 
     # train_epoch(diffusion_model, loader, alphas_bar_sqrt)
